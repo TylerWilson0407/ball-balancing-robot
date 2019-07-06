@@ -1,7 +1,9 @@
 import json
+import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.integrate import solve_ivp
+from time import time
 
 
 def compute_constants(p):
@@ -53,11 +55,29 @@ def pd_control(x, v, Kp, Kd):
     return Kp * (-x) + Kd * (-v)
 
 
+def init_anim():
+    line.set_data([], [])
+    time_text.set_text('')
+    return line, time_text
+
+
+def animate(i, phi, x):
+    px = [x[i], x[i] - 1 * np.sin(phi[i])]
+    py = [0,
+          1 * np.cos(phi[i])]
+
+    line.set_data(px, py)
+    time_text.set_text('time = %.1f' % 0.015 * i)
+    return line, time_text
+
+
 if __name__ == "__main__":
 
+    # import parameters
     with open('params2d.txt') as file:
         params = json.load(file)
 
+    # solve ODE
     consts = compute_constants(params)
 
     t0 = 0
@@ -65,15 +85,41 @@ if __name__ == "__main__":
 
     t_ev = np.linspace(t0, tf, 1001)
 
-    s0 = [0.01, 0, 0, 0, 0, 0]
+    s0 = [0.1, 0, 0, 0, 0, 0]
 
-    sol = solve_ivp(fun=lambda t, y: ds_dt(y, lambda a, b: 0, consts, params),
+    sol = solve_ivp(fun=lambda t, y: ds_dt(y, lambda a, b: 0, consts,
+                                           params),
                     t_span=(t0, tf),
                     y0=s0,
                     t_eval=t_ev)
 
-    print(sol.y[0])
-    print(sol.y[4])
+    # plot/animate
+    fig = plt.figure()
+    ax = fig.add_subplot(111, aspect='equal', autoscale_on=False,
+                         xlim=(-10, 10), ylim=(-2, 2))
+    ax.grid()
 
-    plt.plot(sol.t, (180 / np.pi) * sol.y[4])
+    line, = ax.plot([], [], 'o-', lw=2)
+    time_text = ax.text(0.02, 0.95, '', transform=ax.transAxes)
+
+    print(sol.y[0][0])
+
+    t0 = time()
+    animate(0, sol.y[0], sol.y[4])
+    t1 = time()
+    dt = 1000 * (1/30) - (t1 - t0)
+
+
+    ani = animation.FuncAnimation(fig, animate, frames=600,
+                                  interval=dt,
+                                  blit=True,
+                                  init_func=init_anim,
+                                  fargs=(sol.y[0], sol.y[4]))
+
     plt.show()
+
+    # print(sol.y[0])
+    # print(sol.y[4])
+    #
+    # plt.plot(sol.t, (180 / np.pi) * sol.y[4])
+    # plt.show()
