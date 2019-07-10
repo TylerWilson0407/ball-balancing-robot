@@ -73,8 +73,10 @@ def animate(i, phi, x):
 
 if __name__ == "__main__":
 
+    param_file = 'params2d.txt'
+
     # import parameters
-    with open('params2d.txt') as file:
+    with open(param_file) as file:
         params = json.load(file)
 
     # solve ODE
@@ -86,6 +88,8 @@ if __name__ == "__main__":
     t_ev = np.linspace(t0, tf, 1001)
 
     s0 = [0.1, 0, 0, 0, 0, 0]
+
+    print(ds_dt([0, 0, 0, 0, 0, 0], lambda a, b: 0, consts, params))
 
     sol = solve_ivp(fun=lambda t, y: ds_dt(y, lambda a, b: 0, consts,
                                            params),
