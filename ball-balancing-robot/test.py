@@ -17,31 +17,35 @@ def eqs_of_motion():
     xr, xr_dt, xr_dt2 = symbols('xr xr_dt xr_dt2')
 
     # equations of motion for 2D model
-    eq1 = Eq(
-        (c0 * theta_dt2) + (c0 + (c2 * cos(phi))) * phi_dt2 - (c2 * sin(phi))
-        * phi_dt ** 2 - tau + Dv * theta_dt)
 
-    eq2 = Eq((c2 * cos(phi) * theta_dt2) +
-             ((c1 + (c2 * cos(phi))) * phi_dt2) -
-             (c3 * sin(phi)) + tau)
+    eom1 = Eq(
+        (2 * c0 + c2 * cos(phi)) * phi_dt2 +
+        (-c0 / r) * xr_dt2 +
+        ((-c2 * sin(phi) * phi_dt) + Dv) * phi_dt +
+        (-Dv / r) * xr_dt +
+        (-tau)
+    )
 
-    theta_dt2_sub = phi_dt2 - (1 / r) * xr_dt2
-    theta_dt_sub = phi_dt - (1 / r) * xr_dt
+    eom2 = Eq(
+        (c1 + 2 * c2 * cos(phi)) * phi_dt2 +
+        ((-c2 * cos(phi)) / r) * xr_dt2 +
+        (-c3 * sin(phi)) +
+        (tau)
+    )
 
-    x_sub = {theta_dt2: theta_dt2_sub,
-             theta_dt: theta_dt_sub}
+    eom_sol = solve((eom1, eom2), (phi_dt2, xr_dt2))
 
-    pprint(eq1.subs(x_sub))
-    pprint(eq2.subs(x_sub))
+    phi_dt2_expr = eom_sol[phi_dt2].subs(xr_dt2,
+                                            eom_sol[xr_dt2] - xr_dt2)
+    xr_dt2_expr = eom_sol[xr_dt2].subs(phi_dt2,
+                                        eom_sol[phi_dt2] - phi_dt2)
 
-    sol_eq = solve((eq1, eq2), (theta_dt2, phi_dt2))
+    pprint(phi_dt2_expr)
+    pprint(phi_dt2_expr.coeff(xr_dt))
+    # print('xr_dt2')
+    # pprint(xr_dt2_expr)
 
-    theta_dt2_expr = sol_eq[theta_dt2].subs(phi_dt2,
-                                            sol_eq[phi_dt2] - phi_dt2)
-    phi_dt2_expr = sol_eq[phi_dt2].subs(theta_dt2,
-                                        sol_eq[theta_dt2] - theta_dt2)
-
-    return theta_dt2_expr, phi_dt2_expr
+    return phi_dt2_expr, xr_dt2_expr
 
 
 def compute_constants(p):
@@ -95,27 +99,27 @@ if __name__ == "__main__":
 
     # state of system X = [phi, xr, phi_dt, xr_dt]
 
-    A = Matrix([[0, 0, 1, 0],
-                [0, 0, 0, 1],
-                [0, theta_dt2_dphi, 0, 0],
-                [0, phi_dt2_dphi, 0, 0]])
-
-    B = Matrix([0, 0, theta_dt2_dtau, phi_dt2_dtau])
-
-    A = np.float_(A.subs(setpoint)).tolist()
-    B = np.float_(B.subs(setpoint)).tolist()
-
-    # print(A)
-    # print(B)
-
-    params['A'] = A
-    params['B'] = B
-
-    # print(params)
-    # print(json.dumps(A))
-
-    params['A'] = A
-    params['B'] = B
-
-    with open(param_file, 'w') as file:
-        json.dump(params, file)
+    # A = Matrix([[0, 0, 1, 0],
+    #             [0, 0, 0, 1],
+    #             [0, theta_dt2_dphi, 0, 0],
+    #             [0, phi_dt2_dphi, 0, 0]])
+    #
+    # B = Matrix([0, 0, theta_dt2_dtau, phi_dt2_dtau])
+    #
+    # A = np.float_(A.subs(setpoint)).tolist()
+    # B = np.float_(B.subs(setpoint)).tolist()
+    #
+    # # print(A)
+    # # print(B)
+    #
+    # params['A'] = A
+    # params['B'] = B
+    #
+    # # print(params)
+    # # print(json.dumps(A))
+    #
+    # params['A'] = A
+    # params['B'] = B
+    #
+    # with open(param_file, 'w') as file:
+    #     json.dump(params, file)
