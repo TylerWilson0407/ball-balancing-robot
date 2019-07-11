@@ -3,7 +3,7 @@ import numpy as np
 from sympy import *
 
 
-def solve_accelerations():
+def eqs_of_motion():
     """Solves for the angular accelerations of the body and ball.  Returns
     expressions for them."""
 
@@ -25,24 +25,23 @@ def solve_accelerations():
              ((c1 + (c2 * cos(phi))) * phi_dt2) -
              (c3 * sin(phi)) + tau)
 
-    eq3 = Eq(xr_dt2 + (theta_dt2 + phi_dt2) * r)
+    theta_dt2_sub = phi_dt2 - (1 / r) * xr_dt2
+    theta_dt_sub = phi_dt - (1 / r) * xr_dt
 
-    eq4 = Eq(xr_dt + (theta_dt + phi_dt) * r)
+    x_sub = {theta_dt2: theta_dt2_sub,
+             theta_dt: theta_dt_sub}
 
-    sol_eq = solve((eq1, eq2, eq3), (theta_dt2, phi_dt2, xr_dt2))
+    pprint(eq1.subs(x_sub))
+    pprint(eq2.subs(x_sub))
+
+    sol_eq = solve((eq1, eq2), (theta_dt2, phi_dt2))
 
     theta_dt2_expr = sol_eq[theta_dt2].subs(phi_dt2,
                                             sol_eq[phi_dt2] - phi_dt2)
     phi_dt2_expr = sol_eq[phi_dt2].subs(theta_dt2,
                                         sol_eq[theta_dt2] - theta_dt2)
 
-    pprint(sol_eq[xr_dt2])
-    pprint(sol_eq[phi_dt2])
-    # pprint(theta_dt2_expr + phi_dt2_expr)
-
-    x_dt2_expr = -(theta_dt2_expr + phi_dt2_expr) * r
-
-    return theta_dt2_expr, phi_dt2_expr, x_dt2_expr
+    return theta_dt2_expr, phi_dt2_expr
 
 
 def compute_constants(p):
@@ -74,7 +73,7 @@ if __name__ == "__main__":
     phi, theta, xr = symbols('phi theta xr')
     phi_dt, theta_dt, xr_dt = symbols('phi_dt theta_dt xr_dt')
 
-    theta_dt2, phi_dt2, xr_dt2 = solve_accelerations()
+    theta_dt2, phi_dt2 = eqs_of_motion()
 
     theta_dt2_dphi = theta_dt2.diff(phi)
     theta_dt2_dtau = theta_dt2.diff(tau)
@@ -82,9 +81,6 @@ if __name__ == "__main__":
     phi_dt2_dphi = phi_dt2.diff(phi)
     phi_dt2_dtau = phi_dt2.diff(tau)
     phi_dt2_dxr = phi_dt2.diff(xr)
-    xr_dt2_dphi = xr_dt2.diff(phi)
-    xr_dt2_dtau = xr_dt2.diff(tau)
-    xr_dt2_dxr = xr_dt2.diff(xr)
 
     setpoint = {phi: 0,
                 theta: 0,
@@ -109,14 +105,14 @@ if __name__ == "__main__":
     A = np.float_(A.subs(setpoint)).tolist()
     B = np.float_(B.subs(setpoint)).tolist()
 
-    print(A)
-    print(B)
+    # print(A)
+    # print(B)
 
     params['A'] = A
     params['B'] = B
 
-    print(params)
-    print(json.dumps(A))
+    # print(params)
+    # print(json.dumps(A))
 
     params['A'] = A
     params['B'] = B
