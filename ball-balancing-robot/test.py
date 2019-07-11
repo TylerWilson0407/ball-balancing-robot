@@ -1,6 +1,8 @@
 import json
 import numpy as np
-from sympy import *
+import scipy.linalg
+import sympy as sy
+# from sympy import *
 
 
 def eqs_of_motion():
@@ -8,29 +10,29 @@ def eqs_of_motion():
     acceleration of the body, and the acceleration of the ball.  Returns
     expressions for them."""
 
-    c0, c1, c2, c3 = symbols('c0 c1 c2 c3')
-    Dv, tau, r = symbols('Dv tau r')
-    phi, phi_dt, phi_dt2 = symbols('phi phi_dt phi_dt2')
-    xr, xr_dt, xr_dt2 = symbols('xr xr_dt xr_dt2')
+    c0, c1, c2, c3 = sy.symbols('c0 c1 c2 c3')
+    Dv, tau, r = sy.symbols('Dv tau r')
+    phi, phi_dt, phi_dt2 = sy.symbols('phi phi_dt phi_dt2')
+    xr, xr_dt, xr_dt2 = sy.symbols('xr xr_dt xr_dt2')
 
     # equations of motion for 2D model
-    eom1 = Eq(
-        (2 * c0 + c2 * cos(phi)) * phi_dt2 +
+    eom1 = sy.Eq(
+        (2 * c0 + c2 * sy.cos(phi)) * phi_dt2 +
         (-c0 / r) * xr_dt2 +
-        ((-c2 * sin(phi) * phi_dt) + Dv) * phi_dt +
+        ((-c2 * sy.sin(phi) * phi_dt) + Dv) * phi_dt +
         (-Dv / r) * xr_dt +
         (-tau)
     )
 
-    eom2 = Eq(
-        (c1 + 2 * c2 * cos(phi)) * phi_dt2 +
-        ((-c2 * cos(phi)) / r) * xr_dt2 +
-        (-c3 * sin(phi)) +
+    eom2 = sy.Eq(
+        (c1 + 2 * c2 * sy.cos(phi)) * phi_dt2 +
+        ((-c2 * sy.cos(phi)) / r) * xr_dt2 +
+        (-c3 * sy.sin(phi)) +
         (tau)
     )
 
     # solve equations of motion for phi_dt2 and xr_dt2
-    sol_eom = solve((eom1, eom2), (phi_dt2, xr_dt2))
+    sol_eom = sy.solve((eom1, eom2), (phi_dt2, xr_dt2))
 
     # remove xr_dt2 terms from phi_dt2 expression and visa versa
     phi_dt2_equals = sol_eom[phi_dt2].subs(xr_dt2, sol_eom[xr_dt2] - xr_dt2)
@@ -51,6 +53,28 @@ def compute_constants(p):
     return [c0, c1, c2, c3]
 
 
+def lqr(A, B, Q, R):
+    """Solve the continuous time lqr controller.
+
+    dx/dt = A x + B u
+
+    sy.cost = integral x.T*Q*x + u.T*R*u
+    """
+
+    # ref Bertsekas, p.151
+
+    # first, try to solve the ricatti equation
+    X = np.matrix(scipy.linalg.solve_continuous_are(A, B, Q, R))
+    print(X)
+
+    # compute the LQR gain
+    K = np.matrix(scipy.linalg.inv(R) * (B.T * X))
+
+    eigVals, eigVecs = scipy.linalg.eig(A - B * K)
+
+    return K, X, eigVals
+
+
 if __name__ == "__main__":
 
     param_file = 'params2d.txt'
@@ -62,19 +86,19 @@ if __name__ == "__main__":
     # solve ODE
     consts = compute_constants(params)
 
-    c0, c1, c2, c3 = symbols('c0 c1 c2 c3')
-    Dv, tau, r = symbols('Dv tau r')
-    phi, phi_dt = symbols('phi phi_dt')
-    xr, xr_dt = symbols('xr xr_dt')
+    c0, c1, c2, c3 = sy.symbols('c0 c1 c2 c3')
+    Dv, tau, r = sy.symbols('Dv tau r')
+    phi, phi_dt = sy.symbols('phi phi_dt')
+    xr, xr_dt = sy.symbols('xr xr_dt')
 
     phi_dt2, xr_dt2 = eqs_of_motion()
 
-    A = Matrix([[0, 0, 1, 0],
+    A = sy.Matrix([[0, 0, 1, 0],
                 [0, 0, 0, 1],
                 [0, 0, 0, 0],
                 [0, 0, 0, 0]])
 
-    B = Matrix([0, 0, 0, 0])
+    B = sy.Matrix([0, 0, 0, 0])
 
     for i, s_dt in enumerate([phi_dt2, xr_dt2]):
 
@@ -94,14 +118,37 @@ if __name__ == "__main__":
                 c2: consts[2],
                 c3: consts[3]}
 
-    pprint(A.subs(setpoint))
-    pprint(B.subs(setpoint))
+    sy.pprint(A.subs(setpoint))
+    sy.pprint(B.subs(setpoint))
 
     A = np.float_(A.subs(setpoint)).tolist()
     B = np.float_(B.subs(setpoint)).tolist()
 
-    params['A'] = A
-    params['B'] = B
+    # Q matrix
+    Q  = np.zeros((4, 4))
 
-    with open(param_file, 'w') as file:
-        json.dump(params, file)
+    # max errors for state
+    e_phi = np.radians(10)  # 10 degrees
+    e_xr = 0.5  # 0.5m
+    e_phidt = 3 * e_phi  # derivatives estimated 3x position
+    e_xrdt = 3 * e_xr
+
+    for i, e in enumerate([e_phi, e_xr, e_phidt, e_xrdt]):
+        Q[i][i] = 1 / e ** 2
+
+    # R matrix
+
+    # R = np.zeros((1, 1))
+
+    # max torque - 3.75Nm
+    u_max = 3.75
+
+    R = (1 / u_max ** 2)
+
+    K, X, EigVals = lqr(A, B, Q, R)
+
+    # params['A'] = A
+    # params['B'] = B
+    #
+    # with open(param_file, 'w') as file:
+    #     json.dump(params, file)
