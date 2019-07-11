@@ -4,44 +4,39 @@ from sympy import *
 
 
 def eqs_of_motion():
-    """Solves for the angular accelerations of the body and ball.  Returns
+    """Defines and solves the equations of motion for the angular
+    acceleration of the body, and the acceleration of the ball.  Returns
     expressions for them."""
 
     c0, c1, c2, c3 = symbols('c0 c1 c2 c3')
-    Dv = symbols('Dv')
-    tau = symbols('tau')
-    r = symbols('r')
-    phi, theta = symbols('phi theta')
-    phi_dt, phi_dt2, theta_dt, theta_dt2 = symbols('phi_dt phi_dt2 theta_dt '
-                                                   'theta_dt2')
+    Dv, tau, r = symbols('Dv tau r')
+    phi, phi_dt, phi_dt2 = symbols('phi phi_dt phi_dt2')
     xr, xr_dt, xr_dt2 = symbols('xr xr_dt xr_dt2')
 
     # equations of motion for 2D model
-    eq1 = Eq(
-        (c0 * theta_dt2) + (c0 + (c2 * cos(phi))) * phi_dt2 - (c2 * sin(phi))
-        * phi_dt ** 2 - tau + Dv * theta_dt)
+    eom1 = Eq(
+        (2 * c0 + c2 * cos(phi)) * phi_dt2 +
+        (-c0 / r) * xr_dt2 +
+        ((-c2 * sin(phi) * phi_dt) + Dv) * phi_dt +
+        (-Dv / r) * xr_dt +
+        (-tau)
+    )
 
-    eq2 = Eq((c2 * cos(phi) * theta_dt2) +
-             ((c1 + (c2 * cos(phi))) * phi_dt2) -
-             (c3 * sin(phi)) + tau)
+    eom2 = Eq(
+        (c1 + 2 * c2 * cos(phi)) * phi_dt2 +
+        ((-c2 * cos(phi)) / r) * xr_dt2 +
+        (-c3 * sin(phi)) +
+        (tau)
+    )
 
-    theta_dt2_sub = phi_dt2 - (1 / r) * xr_dt2
-    theta_dt_sub = phi_dt - (1 / r) * xr_dt
+    # solve equations of motion for phi_dt2 and xr_dt2
+    sol_eom = solve((eom1, eom2), (phi_dt2, xr_dt2))
 
-    x_sub = {theta_dt2: theta_dt2_sub,
-             theta_dt: theta_dt_sub}
+    # remove xr_dt2 terms from phi_dt2 expression and visa versa
+    phi_dt2_equals = sol_eom[phi_dt2].subs(xr_dt2, sol_eom[xr_dt2] - xr_dt2)
+    xr_dt2_equals = sol_eom[xr_dt2].subs(phi_dt2, sol_eom[phi_dt2] - phi_dt2)
 
-    pprint(eq1.subs(x_sub))
-    pprint(eq2.subs(x_sub))
-
-    sol_eq = solve((eq1, eq2), (theta_dt2, phi_dt2))
-
-    theta_dt2_expr = sol_eq[theta_dt2].subs(phi_dt2,
-                                            sol_eq[phi_dt2] - phi_dt2)
-    phi_dt2_expr = sol_eq[phi_dt2].subs(theta_dt2,
-                                        sol_eq[theta_dt2] - theta_dt2)
-
-    return theta_dt2_expr, phi_dt2_expr
+    return phi_dt2_equals, xr_dt2_equals
 
 
 def compute_constants(p):
@@ -68,51 +63,42 @@ if __name__ == "__main__":
     consts = compute_constants(params)
 
     c0, c1, c2, c3 = symbols('c0 c1 c2 c3')
-    # Dv = symbols('Dv')
-    tau = symbols('tau')
-    phi, theta, xr = symbols('phi theta xr')
-    phi_dt, theta_dt, xr_dt = symbols('phi_dt theta_dt xr_dt')
+    Dv, tau, r = symbols('Dv tau r')
+    phi, phi_dt = symbols('phi phi_dt')
+    xr, xr_dt = symbols('xr xr_dt')
 
-    theta_dt2, phi_dt2 = eqs_of_motion()
+    phi_dt2, xr_dt2 = eqs_of_motion()
 
-    theta_dt2_dphi = theta_dt2.diff(phi)
-    theta_dt2_dtau = theta_dt2.diff(tau)
-    theta_dt2_dxr = theta_dt2.diff(xr)
-    phi_dt2_dphi = phi_dt2.diff(phi)
-    phi_dt2_dtau = phi_dt2.diff(tau)
-    phi_dt2_dxr = phi_dt2.diff(xr)
+    A = Matrix([[0, 0, 1, 0],
+                [0, 0, 0, 1],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0]])
+
+    B = Matrix([0, 0, 0, 0])
+
+    for i, s_dt in enumerate([phi_dt2, xr_dt2]):
+
+        for j, s in enumerate([phi, xr, phi_dt, xr_dt]):
+            A[i + 2, j] = s_dt.diff(s)
+
+        B[i + 2] = s_dt.diff(tau)
 
     setpoint = {phi: 0,
-                theta: 0,
-                phi_dt: 0,
-                theta_dt: 0,
                 xr: 0,
+                phi_dt: 0,
                 xr_dt: 0,
+                r: params['r'],
+                Dv: params['D_v'],
                 c0: consts[0],
                 c1: consts[1],
                 c2: consts[2],
                 c3: consts[3]}
 
-    # state of system X = [phi, xr, phi_dt, xr_dt]
-
-    A = Matrix([[0, 0, 1, 0],
-                [0, 0, 0, 1],
-                [0, theta_dt2_dphi, 0, 0],
-                [0, phi_dt2_dphi, 0, 0]])
-
-    B = Matrix([0, 0, theta_dt2_dtau, phi_dt2_dtau])
+    pprint(A.subs(setpoint))
+    pprint(B.subs(setpoint))
 
     A = np.float_(A.subs(setpoint)).tolist()
     B = np.float_(B.subs(setpoint)).tolist()
-
-    # print(A)
-    # print(B)
-
-    params['A'] = A
-    params['B'] = B
-
-    # print(params)
-    # print(json.dumps(A))
 
     params['A'] = A
     params['B'] = B
