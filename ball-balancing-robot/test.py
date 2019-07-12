@@ -1,51 +1,43 @@
 import json
 import numpy as np
-from sympy import *
+import scipy.linalg
+import sympy as sy
 
 
 def eqs_of_motion():
-    """Solves for the angular accelerations of the body and ball.  Returns
+    """Defines and solves the equations of motion for the angular
+    acceleration of the body, and the acceleration of the ball.  Returns
     expressions for them."""
 
-    c0, c1, c2, c3 = symbols('c0 c1 c2 c3')
-    Dv = symbols('Dv')
-    tau = symbols('tau')
-    r = symbols('r')
-    phi, theta = symbols('phi theta')
-    phi_dt, phi_dt2, theta_dt, theta_dt2 = symbols('phi_dt phi_dt2 theta_dt '
-                                                   'theta_dt2')
-    xr, xr_dt, xr_dt2 = symbols('xr xr_dt xr_dt2')
+    c0, c1, c2, c3 = sy.symbols('c0 c1 c2 c3')
+    Dv, tau, r = sy.symbols('Dv tau r')
+    phi, phi_dt, phi_dt2 = sy.symbols('phi phi_dt phi_dt2')
+    xr, xr_dt, xr_dt2 = sy.symbols('xr xr_dt xr_dt2')
 
     # equations of motion for 2D model
-
-    eom1 = Eq(
-        (2 * c0 + c2 * cos(phi)) * phi_dt2 +
+    eom1 = sy.Eq(
+        (2 * c0 + c2 * sy.cos(phi)) * phi_dt2 +
         (-c0 / r) * xr_dt2 +
-        ((-c2 * sin(phi) * phi_dt) + Dv) * phi_dt +
+        ((-c2 * sy.sin(phi) * phi_dt) + Dv) * phi_dt +
         (-Dv / r) * xr_dt +
         (-tau)
     )
 
-    eom2 = Eq(
-        (c1 + 2 * c2 * cos(phi)) * phi_dt2 +
-        ((-c2 * cos(phi)) / r) * xr_dt2 +
-        (-c3 * sin(phi)) +
+    eom2 = sy.Eq(
+        (c1 + 2 * c2 * sy.cos(phi)) * phi_dt2 +
+        ((-c2 * sy.cos(phi)) / r) * xr_dt2 +
+        (-c3 * sy.sin(phi)) +
         (tau)
     )
 
-    eom_sol = solve((eom1, eom2), (phi_dt2, xr_dt2))
+    # solve equations of motion for phi_dt2 and xr_dt2
+    sol_eom = sy.solve((eom1, eom2), (phi_dt2, xr_dt2))
 
-    phi_dt2_expr = eom_sol[phi_dt2].subs(xr_dt2,
-                                            eom_sol[xr_dt2] - xr_dt2)
-    xr_dt2_expr = eom_sol[xr_dt2].subs(phi_dt2,
-                                        eom_sol[phi_dt2] - phi_dt2)
+    # remove xr_dt2 terms from phi_dt2 expression and visa versa
+    phi_dt2_equals = sol_eom[phi_dt2].subs(xr_dt2, sol_eom[xr_dt2] - xr_dt2)
+    xr_dt2_equals = sol_eom[xr_dt2].subs(phi_dt2, sol_eom[phi_dt2] - phi_dt2)
 
-    pprint(phi_dt2_expr)
-    pprint(phi_dt2_expr.coeff(xr_dt))
-    # print('xr_dt2')
-    # pprint(xr_dt2_expr)
-
-    return phi_dt2_expr, xr_dt2_expr
+    return phi_dt2_equals, xr_dt2_equals
 
 
 def compute_constants(p):
@@ -60,6 +52,21 @@ def compute_constants(p):
     return [c0, c1, c2, c3]
 
 
+def lqr(A, B, Q, R):
+    """Continuous-time LQR controller design."""
+
+    # solve continuous algebraic Riccati equation
+    X = scipy.linalg.solve_continuous_are(A, B, Q, R)
+
+    # derive gain matrix K
+    K = np.matmul(scipy.linalg.inv(R), np.matmul(B.T, X))
+
+    # return eigenvalues
+    eig, __ = scipy.linalg.eig(A - np.matmul(B, K))
+
+    return K, X, eig
+
+
 if __name__ == "__main__":
 
     param_file = 'params2d.txt'
@@ -71,55 +78,59 @@ if __name__ == "__main__":
     # solve ODE
     consts = compute_constants(params)
 
-    c0, c1, c2, c3 = symbols('c0 c1 c2 c3')
-    # Dv = symbols('Dv')
-    tau = symbols('tau')
-    phi, theta, xr = symbols('phi theta xr')
-    phi_dt, theta_dt, xr_dt = symbols('phi_dt theta_dt xr_dt')
+    c0, c1, c2, c3 = sy.symbols('c0 c1 c2 c3')
+    Dv, tau, r = sy.symbols('Dv tau r')
+    phi, phi_dt = sy.symbols('phi phi_dt')
+    xr, xr_dt = sy.symbols('xr xr_dt')
 
-    theta_dt2, phi_dt2 = eqs_of_motion()
+    phi_dt2, xr_dt2 = eqs_of_motion()
 
-    theta_dt2_dphi = theta_dt2.diff(phi)
-    theta_dt2_dtau = theta_dt2.diff(tau)
-    theta_dt2_dxr = theta_dt2.diff(xr)
-    phi_dt2_dphi = phi_dt2.diff(phi)
-    phi_dt2_dtau = phi_dt2.diff(tau)
-    phi_dt2_dxr = phi_dt2.diff(xr)
+    A = sy.Matrix([[0, 0, 1, 0],
+                [0, 0, 0, 1],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0]])
+
+    B = sy.Matrix([0, 0, 0, 0])
+
+    for i, s_dt in enumerate([phi_dt2, xr_dt2]):
+
+        for j, s in enumerate([phi, xr, phi_dt, xr_dt]):
+            A[i + 2, j] = s_dt.diff(s)
+
+        B[i + 2] = s_dt.diff(tau)
 
     setpoint = {phi: 0,
-                theta: 0,
-                phi_dt: 0,
-                theta_dt: 0,
                 xr: 0,
+                phi_dt: 0,
                 xr_dt: 0,
+                r: params['r'],
+                Dv: params['D_v'],
                 c0: consts[0],
                 c1: consts[1],
                 c2: consts[2],
                 c3: consts[3]}
 
-    # state of system X = [phi, xr, phi_dt, xr_dt]
+    A = np.float_(A.subs(setpoint))
+    B = np.float_(B.subs(setpoint))
 
-    # A = Matrix([[0, 0, 1, 0],
-    #             [0, 0, 0, 1],
-    #             [0, theta_dt2_dphi, 0, 0],
-    #             [0, phi_dt2_dphi, 0, 0]])
-    #
-    # B = Matrix([0, 0, theta_dt2_dtau, phi_dt2_dtau])
-    #
-    # A = np.float_(A.subs(setpoint)).tolist()
-    # B = np.float_(B.subs(setpoint)).tolist()
-    #
-    # # print(A)
-    # # print(B)
-    #
-    # params['A'] = A
-    # params['B'] = B
-    #
-    # # print(params)
-    # # print(json.dumps(A))
-    #
-    # params['A'] = A
-    # params['B'] = B
-    #
-    # with open(param_file, 'w') as file:
-    #     json.dump(params, file)
+    # Q matrix
+    Q = np.zeros((4, 4))
+
+    # max errors for state
+    e_phi = np.radians(10)  # 10 degrees
+    e_xr = 0.5  # 0.5m
+    e_phidt = 3 * e_phi  # derivatives estimated 3x position
+    e_xrdt = 3 * e_xr
+
+    for i, e in enumerate([e_phi, e_xr, e_phidt, e_xrdt]):
+        Q[i][i] = 1 / e ** 2
+
+    # R matrix
+
+    # max torque - 3.75Nm
+    u_max = 3.75
+
+    R = [[(1 / u_max ** 2)]]
+
+    K, X, eig = lqr(A, B, Q, R)
+
