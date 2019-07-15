@@ -4,40 +4,51 @@ import scipy.linalg
 import sympy as sy
 
 
-def eqs_of_motion():
-    """Defines and solves the equations of motion for the angular
-    acceleration of the body, and the acceleration of the ball.  Returns
-    expressions for them."""
+def sym_dict2d():
 
-    c0, c1, c2, c3 = sy.symbols('c0 c1 c2 c3')
-    Dv, tau, r = sy.symbols('Dv tau r')
-    phi, phi_dt, phi_dt2 = sy.symbols('phi phi_dt phi_dt2')
-    xr, xr_dt, xr_dt2 = sy.symbols('xr xr_dt xr_dt2')
+    sd = {}
 
-    # equations of motion for 2D model
+    # constants c0 - c3 (functions of mass, length, inertia, gravity constant)
+    sd['c0'], sd['c1'], sd['c2'], sd['c3'] = sy.symbols('c0 c1 c2 c3')
+    sd['Dv'], sd['r'] = sy.symbols('Dv r')
+    sd['tau'] = sy.symbols('tau')
+    sd['phi'], sd['phi_dt'], sd['phi_dt2'] = sy.symbols('phi phi_dt phi_dt2')
+    sd['x'], sd['x_dt'], sd['x_dt2'] = sy.symbols('x x_dt x_dt2')
+    
+    return sd
+
+
+def solve_eom_2d():
+    """Solve equations of motion for two acceleration variables phi_dt2 and
+    x_dt2 for the 2D model.
+
+    phi = angle of robot body
+    x = horizontal position of ball
+
+    Returns Sympy expressions
+
+    """
+    
+    s = sym_dict2d()
+
     eom1 = sy.Eq(
-        (2 * c0 + c2 * sy.cos(phi)) * phi_dt2 +
-        (-c0 / r) * xr_dt2 +
-        ((-c2 * sy.sin(phi) * phi_dt) + Dv) * phi_dt +
-        (-Dv / r) * xr_dt +
-        (-tau)
+        (2 * s['c0'] + s['c2'] * sy.cos(s['phi'])) * s['phi_dt2'] +
+        (-s['c0'] / s['r']) * s['x_dt2'] +
+        ((-s['c2'] * sy.sin(s['phi']) * s['phi_dt']) + s['Dv']) * s['phi_dt'] +
+        (-s['Dv'] / s['r']) * s['x_dt'] +
+        (-s['tau'])
     )
 
     eom2 = sy.Eq(
-        (c1 + 2 * c2 * sy.cos(phi)) * phi_dt2 +
-        ((-c2 * sy.cos(phi)) / r) * xr_dt2 +
-        (-c3 * sy.sin(phi)) +
-        (tau)
+        (s['c1'] + 2 * s['c2'] * sy.cos(s['phi'])) * s['phi_dt2'] +
+        ((-s['c2'] * sy.cos(s['phi'])) / s['r']) * s['x_dt2'] +
+        (-s['c3'] * sy.sin(s['phi'])) +
+        (s['tau'])
     )
 
-    # solve equations of motion for phi_dt2 and xr_dt2
-    sol_eom = sy.solve((eom1, eom2), (phi_dt2, xr_dt2))
+    sol = sy.solve((eom1, eom2), (s['phi_dt2'], s['x_dt2']))
 
-    # remove xr_dt2 terms from phi_dt2 expression and visa versa
-    phi_dt2_equals = sol_eom[phi_dt2].subs(xr_dt2, sol_eom[xr_dt2] - xr_dt2)
-    xr_dt2_equals = sol_eom[xr_dt2].subs(phi_dt2, sol_eom[phi_dt2] - phi_dt2)
-
-    return phi_dt2_equals, xr_dt2_equals
+    return [sol[s['phi_dt2']], sol[s['x_dt2']]]
 
 
 def compute_constants(p):
@@ -69,21 +80,37 @@ def lqr(A, B, Q, R):
 
 if __name__ == "__main__":
 
+    # import defined parameters
     param_file = 'params2d.txt'
-
-    # import parameters
-    with open(param_file) as file:
-        params = json.load(file)
+    params = json.load(open(param_file))
 
     # solve ODE
     consts = compute_constants(params)
 
-    c0, c1, c2, c3 = sy.symbols('c0 c1 c2 c3')
-    Dv, tau, r = sy.symbols('Dv tau r')
-    phi, phi_dt = sy.symbols('phi phi_dt')
-    xr, xr_dt = sy.symbols('xr xr_dt')
+    # define symbols used in equations of motion
+    # c0, c1, c2, c3 = sy.symbols('c0 c1 c2 c3')
+    # Dv, tau, r = sy.symbols('Dv tau r')
+    # phi, phi_dt, phi_dt2 = sy.symbols('phi phi_dt phi_dt2')
+    # x, x_dt, x_dt2 = sy.symbols('x x_dt x_dt2')
 
-    phi_dt2, xr_dt2 = eqs_of_motion()
+    # eom1 = sy.Eq(
+    #     (2 * c0 + c2 * sy.cos(phi)) * phi_dt2 +
+    #     (-c0 / r) * x_dt2 +
+    #     ((-c2 * sy.sin(phi) * phi_dt) + Dv) * phi_dt +
+    #     (-Dv / r) * x_dt +
+    #     (-tau)
+    # )
+    #
+    # eom2 = sy.Eq(
+    #     (c1 + 2 * c2 * sy.cos(phi)) * phi_dt2 +
+    #     ((-c2 * sy.cos(phi)) / r) * x_dt2 +
+    #     (-c3 * sy.sin(phi)) +
+    #     (tau)
+    # )
+
+    s = sym_dict2d()
+
+    [phi_dt2, x_dt2] = solve_eom_2d
 
     A = sy.Matrix([[0, 0, 1, 0],
                 [0, 0, 0, 1],
@@ -92,23 +119,23 @@ if __name__ == "__main__":
 
     B = sy.Matrix([0, 0, 0, 0])
 
-    for i, s_dt in enumerate([phi_dt2, xr_dt2]):
+    for i, s_dt in enumerate([phi_dt2, x_dt2]):
 
-        for j, s in enumerate([phi, xr, phi_dt, xr_dt]):
+        for j, s in enumerate([s['phi'], s['x'], s['phi_dt'], s['x_dt']]):
             A[i + 2, j] = s_dt.diff(s)
 
-        B[i + 2] = s_dt.diff(tau)
+        B[i + 2] = s_dt.diff(s['tau'])
 
-    setpoint = {phi: 0,
-                xr: 0,
-                phi_dt: 0,
-                xr_dt: 0,
-                r: params['r'],
-                Dv: params['D_v'],
-                c0: consts[0],
-                c1: consts[1],
-                c2: consts[2],
-                c3: consts[3]}
+    setpoint = {s['phi']: 0,
+                s['x']: 0,
+                s['phi_dt']: 0,
+                s['x_dt']: 0,
+                s['r']: params['r'],
+                s['Dv']: params['D_v'],
+                s['c0']: consts[0],
+                s['c1']: consts[1],
+                s['c2']: consts[2],
+                s['c3']: consts[3]}
 
     A = np.float_(A.subs(setpoint))
     B = np.float_(B.subs(setpoint))
@@ -118,11 +145,11 @@ if __name__ == "__main__":
 
     # max errors for state
     e_phi = np.radians(10)  # 10 degrees
-    e_xr = 0.5  # 0.5m
+    e_x = 0.5  # 0.5m
     e_phidt = 3 * e_phi  # derivatives estimated 3x position
-    e_xrdt = 3 * e_xr
+    e_xdt = 3 * e_x
 
-    for i, e in enumerate([e_phi, e_xr, e_phidt, e_xrdt]):
+    for i, e in enumerate([e_phi, e_x, e_phidt, e_xdt]):
         Q[i][i] = 1 / e ** 2
 
     # R matrix
@@ -134,3 +161,4 @@ if __name__ == "__main__":
 
     K, X, eig = lqr(A, B, Q, R)
 
+    print(K)

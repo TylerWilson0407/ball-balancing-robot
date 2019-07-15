@@ -2,21 +2,23 @@ import json
 
 # all units in metric (kg, m)
 
-params2d = {
+if __name__ == "__main__":
 
-    'g': 9.81,          # gravitational constant
+    params2d = {
 
-    'D_v': 5,        # viscous damping constant
+        'g': 9.81,          # gravitational constant
 
-    'm_b': 7.135,       # body mass
-    'm_r': 3.2,         # ball mass
+        'D_v': 5,        # viscous damping constant
 
-    'l': 0.405,         # distance between ball/body centers of mass
-    'r': 0.115,       # radius of ball
+        'm_b': 7.135,       # body mass
+        'm_r': 3.2,         # ball mass
 
-    'I_b': 2.4,         # body inertia about rotation axis
-    'I_r': 2.65e-2     # ball inertia
-}
+        'l': 0.405,         # distance between ball/body centers of mass
+        'r': 0.115,       # radius of ball
 
-with open('params2d.txt', 'w') as file:
-    json.dump(params2d, file)
+        'I_b': 2.4,         # body inertia about rotation axis
+        'I_r': 2.65e-2     # ball inertia
+    }
+
+    with open('params2d.txt', 'w') as file:
+        json.dump(params2d, file)
