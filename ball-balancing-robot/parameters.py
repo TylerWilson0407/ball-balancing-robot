@@ -8,7 +8,7 @@ if __name__ == "__main__":
 
         'g': 9.81,          # gravitational constant
 
-        'D_v': 5,        # viscous damping constant
+        'Dv': 5,        # viscous damping constant
 
         'm_b': 7.135,       # body mass
         'm_r': 3.2,         # ball mass

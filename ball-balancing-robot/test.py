@@ -78,6 +78,30 @@ def lqr(A, B, Q, R):
     return K, X, eig
 
 
+def linearize(s, s_dot, u, setpoint=None, param_subs=None):
+    """Create linear state-space representation of time-invariant system.  If
+    setpoint and/or parameters are provided, it will substitute those in.
+    Returns state space matrix(A) and input matrix(B).  Assumes output
+    matrix(C) is identity, and feedthrough matrix(D) is the zero matrix."""
+
+    A = sy.Matrix(np.zeros((len(s), len(s_dot))))
+
+    B = sy.Matrix(np.zeros((len(s_dot), len(u))))
+
+    for i, dsi_dt in enumerate(s_dot):
+        for j, sj in enumerate(s):
+            A[i, j] = dsi_dt.diff(sj)
+
+        for k, uk in enumerate(u):
+            B[i, k] = dsi_dt.diff(uk)
+
+    if setpoint:
+        A.subs(setpoint)
+        B.subs(setpoint)
+
+    return [A, B]
+
+
 if __name__ == "__main__":
 
     # import defined parameters
@@ -87,30 +111,9 @@ if __name__ == "__main__":
     # solve ODE
     consts = compute_constants(params)
 
-    # define symbols used in equations of motion
-    # c0, c1, c2, c3 = sy.symbols('c0 c1 c2 c3')
-    # Dv, tau, r = sy.symbols('Dv tau r')
-    # phi, phi_dt, phi_dt2 = sy.symbols('phi phi_dt phi_dt2')
-    # x, x_dt, x_dt2 = sy.symbols('x x_dt x_dt2')
-
-    # eom1 = sy.Eq(
-    #     (2 * c0 + c2 * sy.cos(phi)) * phi_dt2 +
-    #     (-c0 / r) * x_dt2 +
-    #     ((-c2 * sy.sin(phi) * phi_dt) + Dv) * phi_dt +
-    #     (-Dv / r) * x_dt +
-    #     (-tau)
-    # )
-    #
-    # eom2 = sy.Eq(
-    #     (c1 + 2 * c2 * sy.cos(phi)) * phi_dt2 +
-    #     ((-c2 * sy.cos(phi)) / r) * x_dt2 +
-    #     (-c3 * sy.sin(phi)) +
-    #     (tau)
-    # )
-
     s = sym_dict2d()
 
-    [phi_dt2, x_dt2] = solve_eom_2d
+    [phi_dt2, x_dt2] = solve_eom_2d()
 
     A = sy.Matrix([[0, 0, 1, 0],
                 [0, 0, 0, 1],
@@ -121,44 +124,52 @@ if __name__ == "__main__":
 
     for i, s_dt in enumerate([phi_dt2, x_dt2]):
 
-        for j, s in enumerate([s['phi'], s['x'], s['phi_dt'], s['x_dt']]):
-            A[i + 2, j] = s_dt.diff(s)
+        for j, st in enumerate([s['phi'], s['x'], s['phi_dt'], s['x_dt']]):
+            A[i + 2, j] = s_dt.diff(st)
 
         B[i + 2] = s_dt.diff(s['tau'])
 
     setpoint = {s['phi']: 0,
                 s['x']: 0,
                 s['phi_dt']: 0,
-                s['x_dt']: 0,
-                s['r']: params['r'],
-                s['Dv']: params['D_v'],
-                s['c0']: consts[0],
-                s['c1']: consts[1],
-                s['c2']: consts[2],
-                s['c3']: consts[3]}
+                s['x_dt']: 0}
+    sub_params = {s['r']: params['r'],
+                  s['Dv']: params['Dv'],
+                  s['c0']: consts[0],
+                  s['c1']: consts[1],
+                  s['c2']: consts[2],
+                  s['c3']: consts[3]}
 
-    A = np.float_(A.subs(setpoint))
-    B = np.float_(B.subs(setpoint))
+    A = np.float_(A.subs(setpoint).subs(sub_params))
+    B = np.float_(B.subs(setpoint).subs(sub_params))
 
-    # Q matrix
-    Q = np.zeros((4, 4))
+    s_vec = [s['phi'], s['x'], s['phi_dt'], s['x_dt']]
+    sdot_vec = [s['phi_dt'], s['x_dt'], phi_dt2, x_dt2]
+    u_vec = [s['tau']]
 
-    # max errors for state
-    e_phi = np.radians(10)  # 10 degrees
-    e_x = 0.5  # 0.5m
-    e_phidt = 3 * e_phi  # derivatives estimated 3x position
-    e_xdt = 3 * e_x
+    A, B = linearize(s_vec, sdot_vec, u_vec, setpoint, sub_params)
 
-    for i, e in enumerate([e_phi, e_x, e_phidt, e_xdt]):
-        Q[i][i] = 1 / e ** 2
+    print(A.subs(setpoint).subs(sub_params))
 
-    # R matrix
-
-    # max torque - 3.75Nm
-    u_max = 3.75
-
-    R = [[(1 / u_max ** 2)]]
-
-    K, X, eig = lqr(A, B, Q, R)
-
-    print(K)
+    # # Q matrix
+    # Q = np.zeros((4, 4))
+    #
+    # # max errors for state
+    # e_phi = np.radians(10)  # 10 degrees
+    # e_x = 0.5  # 0.5m
+    # e_phidt = 3 * e_phi  # derivatives estimated 3x position
+    # e_xdt = 3 * e_x
+    #
+    # for i, e in enumerate([e_phi, e_x, e_phidt, e_xdt]):
+    #     Q[i][i] = 1 / e ** 2
+    #
+    # # R matrix
+    #
+    # # max torque - 3.75Nm
+    # u_max = 3.75
+    #
+    # R = [[(1 / u_max ** 2)]]
+    #
+    # K, X, eig = lqr(A, B, Q, R)
+    #
+    # print(K)
