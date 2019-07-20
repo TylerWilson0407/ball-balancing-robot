@@ -4,11 +4,20 @@ import scipy.linalg
 import sympy as sy
 
 
+class System:
+
+    def __init__(self, sym_dict, eqs_of_motion, state, d_state_dt, input):
+        self.syms = sym_dict
+        self.eom = eqs_of_motion
+        self.x = state
+        self.dxdt = d_state_dt
+        self.u = input
+
+
 def sym_dict2d():
 
     sd = {}
 
-    # constants c0 - c3 (functions of mass, length, inertia, gravity constant)
     sd['c0'], sd['c1'], sd['c2'], sd['c3'] = sy.symbols('c0 c1 c2 c3')
     sd['Dv'], sd['r'] = sy.symbols('Dv r')
     sd['tau'] = sy.symbols('tau')
@@ -16,6 +25,22 @@ def sym_dict2d():
     sd['x'], sd['x_dt'], sd['x_dt2'] = sy.symbols('x x_dt x_dt2')
     
     return sd
+
+
+def subs_params_dict2d(syms, params):
+    """Creates dictionary for substituting sympy symbols with their matching
+    parameters."""
+
+    consts = compute_constants(params)
+
+    sub_params = {syms['r']: params['r'],
+                  syms['Dv']: params['Dv'],
+                  syms['c0']: consts[0],
+                  syms['c1']: consts[1],
+                  syms['c2']: consts[2],
+                  syms['c3']: consts[3]}
+
+    return sub_params
 
 
 def solve_eom_2d():
@@ -51,6 +76,27 @@ def solve_eom_2d():
     return [sol[s['phi_dt2']], sol[s['x_dt2']]]
 
 
+def eqs_of_motion2d(s):
+    """Returns equations of motion for 2D ball-balancing robot system. """
+
+    eom1 = sy.Eq(
+        (2 * s['c0'] + s['c2'] * sy.cos(s['phi'])) * s['phi_dt2'] +
+        (-s['c0'] / s['r']) * s['x_dt2'] +
+        ((-s['c2'] * sy.sin(s['phi']) * s['phi_dt']) + s['Dv']) * s['phi_dt'] +
+        (-s['Dv'] / s['r']) * s['x_dt'] +
+        (-s['tau'])
+    )
+
+    eom2 = sy.Eq(
+        (s['c1'] + 2 * s['c2'] * sy.cos(s['phi'])) * s['phi_dt2'] +
+        ((-s['c2'] * sy.cos(s['phi'])) / s['r']) * s['x_dt2'] +
+        (-s['c3'] * sy.sin(s['phi'])) +
+        (s['tau'])
+    )
+
+    return [eom1, eom2]
+
+
 def compute_constants(p):
     """Computes commonly used constants that don't vary with the state of the
     system. Only done once initially.  Input is parameter dictionary."""
@@ -63,14 +109,41 @@ def compute_constants(p):
     return [c0, c1, c2, c3]
 
 
-def lqr(A, B, Q, R):
+def Q_mat(emax_vec):
+    """Create Q matrix for LQR controller design from max error of state
+    variables."""
+
+    Q = np.zeros((len(emax_vec), len(emax_vec)))
+
+    for i, e in enumerate(emax_vec):
+        Q[i][i] = 1 / e ** 2
+
+    return Q
+
+
+def R_mat(umax_vec):
+    """Create R matrix for LQR controller design from max inputs."""
+
+    R = np.zeros((len(umax_vec), len(umax_vec)))
+
+    for i, u in enumerate(umax_vec):
+        R[i][i] = 1 / u ** 2
+
+    return R
+
+
+def lqr(A, B, Q, R, rho=1):
     """Continuous-time LQR controller design."""
 
+    # needs to be numpy array of floats
+    A = np.float_(A)
+    B = np.float_(B)
+
     # solve continuous algebraic Riccati equation
-    X = scipy.linalg.solve_continuous_are(A, B, Q, R)
+    X = scipy.linalg.solve_continuous_are(A, B, Q, rho * R)
 
     # derive gain matrix K
-    K = np.matmul(scipy.linalg.inv(R), np.matmul(B.T, X))
+    K = np.matmul(scipy.linalg.inv(rho * R), np.matmul(B.T, X))
 
     # return eigenvalues
     eig, __ = scipy.linalg.eig(A - np.matmul(B, K))
@@ -110,59 +183,24 @@ if __name__ == "__main__":
     param_file = 'params2d.txt'
     params = json.load(open(param_file))
 
-    # solve ODE
-    consts = compute_constants(params)
-
-    s = sym_dict2d()
+    syms = sym_dict2d()
 
     [phi_dt2, x_dt2] = solve_eom_2d()
 
-    A = sy.Matrix([[0, 0, 1, 0],
-                [0, 0, 0, 1],
-                [0, 0, 0, 0],
-                [0, 0, 0, 0]])
+    sy.pprint(phi_dt2)
 
-    B = sy.Matrix([0, 0, 0, 0])
+    setpoint = {syms['phi']: 0,
+                syms['x']: 0,
+                syms['phi_dt']: 0,
+                syms['x_dt']: 0}
 
-    for i, s_dt in enumerate([phi_dt2, x_dt2]):
+    sub_params = subs_params_dict2d(syms, params)
 
-        for j, st in enumerate([s['phi'], s['x'], s['phi_dt'], s['x_dt']]):
-            A[i + 2, j] = s_dt.diff(st)
-
-        B[i + 2] = s_dt.diff(s['tau'])
-
-    setpoint = {s['phi']: 0,
-                s['x']: 0,
-                s['phi_dt']: 0,
-                s['x_dt']: 0}
-    sub_params = {s['r']: params['r'],
-                  s['Dv']: params['Dv'],
-                  s['c0']: consts[0],
-                  s['c1']: consts[1],
-                  s['c2']: consts[2],
-                  s['c3']: consts[3]}
-
-    A = np.float_(A.subs(setpoint).subs(sub_params))
-    B = np.float_(B.subs(setpoint).subs(sub_params))
-
-    s_vec = [s['phi'], s['x'], s['phi_dt'], s['x_dt']]
-    sdot_vec = [s['phi_dt'], s['x_dt'], phi_dt2, x_dt2]
-    u_vec = [s['tau']]
+    s_vec = [syms['phi'], syms['x'], syms['phi_dt'], syms['x_dt']]
+    sdot_vec = [syms['phi_dt'], syms['x_dt'], phi_dt2, x_dt2]
+    u_vec = [syms['tau']]
 
     A, B = linearize(s_vec, sdot_vec, u_vec, setpoint, sub_params)
-
-    # print(A)
-    # print(B)
-
-    print(type(np.array(A)) == np.ndarray)
-    print(np.array(A).dtype)
-    # print(type(B))
-
-    A = np.float_(A)
-    B = np.float_(B)
-
-    # # Q matrix
-    Q = np.zeros((4, 4))
 
     # max errors for state
     e_phi = np.radians(10)  # 10 degrees
@@ -170,15 +208,10 @@ if __name__ == "__main__":
     e_phidt = 3 * e_phi  # derivatives estimated 3x position
     e_xdt = 3 * e_x
 
-    for i, e in enumerate([e_phi, e_x, e_phidt, e_xdt]):
-        Q[i][i] = 1 / e ** 2
-
-    # R matrix
-
-    # max torque - 3.75Nm
+    Q = Q_mat([e_phi, e_x, e_phidt, e_xdt])
     u_max = 3.75
 
-    R = [[(1 / u_max ** 2)]]
+    R = R_mat([u_max])
 
     K, X, eig = lqr(A, B, Q, R)
 
